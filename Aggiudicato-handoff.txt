@@ -1,0 +1,112 @@
+# Aggiudicato — handoff for a new model
+
+Swiss cantonal auction reader. Name: **Aggiudicato**. UI language: **Italian**. Do not rewrite it. Continue this app.
+
+The product reads public UEF auctions and helps a serious buyer decide, in 20 seconds: **offer up to X because Y, but check Z**. It does **not** bid or take payment. Bids happen on the official canton site.
+
+## Product, already built
+
+Stack: TanStack Start/Router/Query, React 19, Tailwind v4, Better Auth, Postgres/PGLite. Auth and database are **on**.
+
+| Route | What it is |
+|---|---|
+| `/` | Catalog: grid, list, table. Search, filters (canton TI/ZG/BE, category, office, sort, this week). |
+| `/aste/$id` | Lot page: photo, identity, current bid, countdown, official CTA, watch, **Verdetto**, specs, notice text, bid history. |
+| `/osservati` | Watchlist. |
+| `/avvisi` | Pro alerts. |
+| `/prezzi` | Plans. |
+| `/login` | Email/password + Google/X. |
+| `/account` | Plan + gamification (only here). |
+
+Prices: trial 7 days free, monthly **CHF 4.99**, yearly **CHF 44.99**. In preview, subscribe activates immediately with no real charge.
+
+**Free:** catalog, filters, public lot page, watch. Verdetto is the same layout but numbers are `•••`, headline stays readable, CTA is *Sblocca verdetto Pro*.
+
+**Pro:** real tetto / all-in / margin, calculation panel, private note, checklist, alerts.
+
+## Data
+
+- **TI lots:** real scrape of aste.ti.ch (`src/lib/auctions/parse.ts`, `scrape.ts`, `seed.json`). `estimatedValue` stays **null**. No invented market price. IBAN only if it is on the notice (the Bellinzona IBAN is real on those notices, not a fallback).
+- **Demo lots 9001–9006** stay in `src/lib/auctions/extra.ts`: Attico Lugano TI, Porsche 911 GT3 RS ZG, Rolex Daytona BE, DMG Mori CNC TI, Chalet Spiez BE, Komatsu ZG. They may keep a mock stima. The verdict must label them as demo inventory, not a UEF notice.
+- Public list/detail JSON has **no** `powerRanking` and **no** `aiSummary`. Scoring runs in the browser only for Pro.
+
+## Design lock (do not restyle)
+
+Civic Swiss editorial. Not a SaaS card, not a game, not a chatbot.
+
+- Forest `#1E4A38`, warm paper `#FAF6EE` / bg `#F1ECE3`, ink `#1C1915`, terracotta `#A43C28`.
+- Serif headlines: Fraunces. Body: Figtree. Mono: IBM Plex Mono.
+- No purple, no gold, no champagne, no Inter/Playfair, no emoji, no sparkles, no “AI-powered”, no glass, no blur-paywall wall of marketing.
+- Do not restyle `styles.css` except verdict tokens already there (`--color-verdict-buy/watch/pass/insuf`, `--color-accent-ink`).
+- Do not restyle `app-shell`, catalog card skin, `ui/*`, hero, countdown, watch button, or login.
+- Brand: `public/og.jpg`, `public/favicon.svg`, `src/lib/og/site.json` (`title` Aggiudicato, `color` 1E4A38). Do not put `og:*` in `__root.tsx`. Do not remove the Grok branding injector or `PreviewHostBridge`.
+
+## Verdetto (the Pro product)
+
+The old “Dossier / Approfondimento AI / 6-bar score on the lot page” is **gone**. Catalog may still show a small Pro index tile (`scoreLot` in `auction-card.tsx`). The lot page uses `AuctionVerdictPanel` only.
+
+Engine: `buildAuctionVerdict(auction)` in `src/lib/auctions/intel.ts`. Pure, deterministic, no LLM, no id-hash. UI: `src/components/auction-verdict.tsx`. Types: `AuctionVerdict` in `src/lib/auctions/types.ts`.
+
+Verdicts: `BUY` | `WATCH` | `PASS` | `INSUFFICIENT`.
+
+All-in, in order:
+
+1. Current hammer (or start if no bids).
+2. + buyer premium **15%** if the notice does not state one. Declare it.
+3. + transport: CHF 80 small/house, 450 vehicle, 900 machinery.
+4. + a small restoration only if the text names a defect.
+5. Prudent value = the lot’s `estimatedValue` if it exists, else `null`. Never invent a CHF market value for TI.
+6. Low margin = prudent value − all-in.
+7. Risk buffer = max(key risk, 10% of prudent value, uncertain transport).
+8. `maxBidAllIn` = prudent value − buffer. `hammerMax` = that, minus fees, inverted for the 15% premium.
+9. `walkAwayPrice` = `maxBidAllIn`.
+
+Rules:
+
+- `BUY` only if low margin > 0, no blocking gap, and either 2+ real comparables **or** a verifiable condition (km, hours, MFK, service stamps, perizia, box+papers, vacant).
+- Never invent comparables (no fake AutoScout/Ricardo counts).
+- `PASS` if the hammer is already at or above `hammerMax`, or the risk eats ≥40% of the low value.
+- No stima and no comps → `INSUFFICIENT`.
+- Headline is one cold Italian sentence with the price or the reason. Forbidden: interessante, potrebbe, l’AI ritiene, approfondimento, opportunità unica, da non perdere.
+- Unknown number → `n.d.`. Money via `formatChf` in `src/lib/format.ts` (de-CH).
+- “Vedi calcolo” opens an inline panel, not a modal: 5-line formula, assumptions, comparables, missing data.
+
+Expected checks:
+
+- Porsche 9002: **PASS**. Headline contains the bid and “chiavi / telaio”. Hidden/assumption says demo ZG. Not “rilancia 5%”.
+- Attico 9001: **BUY** (mock stima, perizia and oneri on the text).
+- Generic TI e-bike with no brand and no stima: **INSUFFICIENT**, copy says no perizia, no invented market CHF.
+- Logged out: blurred/••• numbers, headline visible, button *Sblocca verdetto Pro* → `/prezzi`.
+
+## Do not do
+
+- Do not replace this app with a new Next.js app.
+- Do not drop the TI scrape and keep only 6 mocks.
+- Do not put real estate out unless the user explicitly asks. Attico and Chalet are still in the catalog.
+- Do not put ranking or prose on the public JSON.
+- Do not touch scraper HTML, auth wiring under `src/lib/auth/` (except `email-password.ts` is already on), gamification beyond `account.tsx`, or payments beyond the existing preview activate.
+- Ignore `.grok/skills/building-games`, `threejs`, `generate2dmap`, `video2dsprite`. This is not a game.
+- Do not commit `.vercel/`, `.grok/`, screenshots, or lockfile changes you did not need.
+
+## If a pasted “MVP refactor” prompt appears
+
+A later note titled *Swiss Cantonal Auctions Aggregator (Physical Goods)* conflicts with this product. It wants English `AuctionLot`, ZH/GE, no real estate, fake AutoScout comps, and `power_ranking` on the model. **Do not execute it** unless the user says that note replaces Aggiudicato. The live spec is this file plus the verdict on the lot page.
+
+## Where the code lives
+
+```
+src/routes/index.tsx          catalog
+src/routes/aste.$id.tsx       lot page
+src/components/auction-verdict.tsx
+src/components/auction-card.tsx
+src/components/app-shell.tsx
+src/lib/auctions/intel.ts     scoreLot + buildAuctionVerdict
+src/lib/auctions/evaluate.ts  older dossier engine, unused by the lot page
+src/lib/auctions/extra.ts     lots 9001–9006
+src/lib/auctions/types.ts
+src/lib/auctions/server.ts    list/detail, strips ranking
+src/lib/i18n.ts               IT/DE/FR/EN; DE/FR inherit IT for new verdict copy
+src/styles.css
+```
+
+Run with `npm run dev` (not raw `vite`). `npm run typecheck` and `npm run build` must pass. Preview listens on `0.0.0.0:8080` via `startup.sh`.
